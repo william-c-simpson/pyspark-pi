@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyspark-pi"
+version = "0.1.0"
+description = "A custom Spark data source for connecting to Aveva's Pi Web API."
+authors = [{ name = "William Simpson" }]
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = ["requests==2.32.4", "requests-kerberos==0.15.0"]
+[project.optional-dependencies]
+dev = ["pytest==8.4.1", "twine==6.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/william-c-simpson/pyspark-pi"
+
+[tool.setuptools.packages.find]
+include = ["pyspark_pi", "pyspark_pi.*"]
+
+[tool.pytest.ini_options]
+minversion = "8.4.1"
+markers = ["integration: marks tests as integration tests"]
