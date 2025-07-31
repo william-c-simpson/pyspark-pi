@@ -10,8 +10,6 @@ authors = [{ name = "William Simpson" }]
 readme = "readme.md"
 requires-python = ">=3.11"
 dependencies = ["requests==2.32.4", "requests-kerberos==0.15.0"]
-[project.optional-dependencies]
-dev = ["pytest==8.4.1", "twine==6.1.0"]
 
 [project.urls]
 Homepage = "https://github.com/william-c-simpson/pyspark-pi"
