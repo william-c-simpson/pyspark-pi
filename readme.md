@@ -6,6 +6,10 @@ Currently, only batch read is implemented.
 
 ### Example
 
+```shell
+pip install pyspark-pi
+```
+
 ```python
 from pispark_pi import PiDataSource
 
