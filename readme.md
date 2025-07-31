@@ -2,7 +2,7 @@
 
 This is a custom Spark data source for connecting to Aveva's Pi Web API. It was created using the Python data source API which was made available as of Spark 4.0.0 and requires at least Spark 4.0.0.
 
-Currently, only batch read is implmented.
+Currently, only batch read is implemented.
 
 ### Example
 
@@ -124,42 +124,9 @@ It schedules when requests will be sent out before dispatching tasks so that you
 
 **Year and month intervals are not currently supported.**
 
-Timestamps and intervals are passed using Pi's "Pi Time Syntax." These strings are not included in the web requests sent to the API directly. Instead, the connector deserializes and then reserializes the value. It's done this way because it needs to actually understand the what the time span is in order to split the overall request into appropriately-sized input partitions. This parsing is done using the following regexs - yes, I know - as well as `dateutil.parser` as a fallback for timestamps:
+Timestamps and intervals are passed using Pi's "Pi Time Syntax." These strings are not included in the web requests sent to the API directly. Instead, the connector deserializes and then reserializes the value. It's done this way because it needs to actually understand the what the time span is in order to split the overall request into appropriately-sized input partitions. This parsing is done using a set of regexs, as well as `dateutil.parser` as a fallback for timestamps:
 
-Timestamps:
-```
-^\s*(
-        (?P<star>\*)
-        |
-        (?P<today>[Tt]oday|[Tt])
-        |
-        (?P<yesterday>[Yy]esterday|[Yy])
-        |
-        (?P<weekday>(mon|tue|wed|thu|fri|sat|sun)(day|sday|nesday|rsday|urday)?)
-        |
-        (?P<monthday>
-            (?P<month>(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(uary|ch|il|e|ust|ember)?)
-            \s+
-            (?P<md_day>\d{1,2})
-        )
-        |
-        (?P<md>\d{1,2}[-/]\d{1,2})
-        |
-        (?P<year>\d{4})
-        |
-        (?P<day>\d{1,2})
-    )\s*$
-```
-Intervals:
-```
-(?P<sign>[+-])?(?P<value>\d+(\.\d+)?)\s*(?P<unit>[yMwdhmsf])(?=[^a-zA-Z]|\Z|\s*)
-
-^(?P<h>\d+)(:(?P<m>\d+))?(:(?P<s>\d+(\.\d+)?))?$
-```
-
-These are fairly complicated and certainly don't cover all edge cases perfectly. If you find yourself passing a time string that you think should be correct and you're getting an error saying it's invalid, or worse - getting an incorrect result, try formatting it in a different way. The format allows for multiple different ways of representing the same time span.
-
-This shouldn't be an issue unless you're using *quite* a complicated time string though, which I don't think is common for most use cases.
+Those regexs don't cover all edge cases perfectly. If you find yourself passing a time string that you think should be correct and you're getting an error saying it's invalid, or worse - getting an incorrect result, try formatting it in a different way. The format allows for multiple different ways of representing the same time span.
 
 # Relevant Aveva Documentation
 
