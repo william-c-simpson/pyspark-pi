@@ -42,7 +42,7 @@ Either a single point name or a list of multiple point names can be provided to 
 
 All points in a single read call must be of the same PointType.
 
-Currently, only retrieves string values for Digital pointTypes. Doesn't support Blob PointType
+Currently, only retrieves string values for Digital pointTypes.
 
 Additional options can be defined using the option/options functions.
 
@@ -150,4 +150,3 @@ https://docs.aveva.com/bundle/af-sdk/page/html/T_OSIsoft_AF_Time_AFTimeSpan.htm
 - All types of data source push down (would require a rewrite in a JVM language if those features aren't added to the Python API)
 - A second connector for Pi Asset Framework
 - Year and month time spans
-- Blob PointType
