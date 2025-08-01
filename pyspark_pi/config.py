@@ -1,7 +1,6 @@
 from enum import Enum
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-import dateutil
 
 from pyspark_pi import errors, pi_time
 
@@ -172,7 +171,7 @@ def _parse_datetime(options: dict, key: str, required: bool = False) -> datetime
     if val is None:
         return None
     try:
-        return dateutil.parser.parse(val)
+        return pi_time.deserialize_pi_time(val)
     except ValueError:
         raise errors.PiDataSourceConfigError(f"Invalid datetime format for {key}: {val}")
 
