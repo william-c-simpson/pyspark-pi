@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyspark-pi"
-version = "0.1.1"
+version = "0.1.2"
 description = "A custom Spark data source for connecting to Aveva's Pi Web API."
 authors = [{ name = "William Simpson" }]
 readme = "readme.md"
