@@ -2,6 +2,7 @@ from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
 import time
 from enum import Enum
+from typing import Any
 
 import requests
 from pyspark.sql.types import DataType, StringType, IntegerType, FloatType, BinaryType, TimestampType
@@ -344,7 +345,7 @@ def _raise_batch_http_errors(res: requests.Response):
         if value.get("Status") < 200 or value.get("Status") >= 300:
             raise errors.PiDataSourceHttpError(f"Failed to retrieve data: {value.get('Content').get('Errors')[0]}")
 
-def _parse_batch_results(point_type: PointType, res_body: dict) -> list[tuple[str, str, any]]:
+def _parse_batch_results(point_type: PointType, res_body: dict) -> list[tuple[str, str, Any]]:
     """
     Parse the results from a batch request to the Pi Web API.
     """
@@ -356,6 +357,8 @@ def _parse_batch_results(point_type: PointType, res_body: dict) -> list[tuple[st
                 value = datetime.fromisoformat(item.get("Value")) if item.get("Value") else None
             elif point_type == PointType.DIGITAL:
                 value = item.get("Value").get("Name") if item.get("Value") else None
+            elif point_type == PointType.BLOB:
+                value = bytes(item.get("Value")) if item.get("Value") else None
             else:
                 value = item.get("Value")
 
