@@ -120,7 +120,6 @@ def test_get_average(
         timezone="Etc/UTC"
     ).load(point_name)
     df.show()
-    print(data)
 
     rows = df.collect()
 

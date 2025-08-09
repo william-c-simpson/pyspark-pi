@@ -79,8 +79,6 @@ def _get_point_id(server_id: str, point_name: str, host: str, username: str, pas
 def _write_point_data(point_id: str, data: list[dict[str, Any]], host: str, username: str, password: str):
     url = f"{host}/piwebapi/streams/{point_id}/recorded?bufferOption=DoNotBuffer"
     headers = {"X-Requested-With": "XMLHttpRequest"}
-    print(url)
-    print(data)
     response = requests.post(
         url, 
         json=data, 

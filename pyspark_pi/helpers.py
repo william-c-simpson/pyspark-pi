@@ -30,7 +30,7 @@ def result_schema(dtype: type | DataType) -> StructType:
         out_type = dtype
     else:
         raise ValueError(f"Unsupported data type: {dtype}")
-    
+
     return StructType([
         StructField("point", StringType(), nullable=False),
         StructField("timestamp", TimestampType(), nullable=False),

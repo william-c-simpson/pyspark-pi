@@ -1,10 +1,11 @@
+from typing import Any
+
 from pyspark.sql.datasource import InputPartition
 
 class PiInputPartition(InputPartition):
-    """
-    A Spark input partition for the Pi web API.
-    """
-    def __init__(self):
+    def __init__(self, value: Any) -> None:
+        super().__init__(value)
+        
         self.request_ranges = []
         self.execute_offset = None
         self.execute_cycle_duration = None

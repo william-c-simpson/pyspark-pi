@@ -80,8 +80,7 @@ def test_deserialize_pi_time(input_str, expected):
 ])
 def test_deserialize_invalid_pi_time(invalid_input):
     with pytest.raises(ValueError):
-        print(f"Testing invalid input: {invalid_input}")
-        print(pi_time.deserialize_pi_time(invalid_input))
+        pi_time.deserialize_pi_time(invalid_input)
 
 @pytest.mark.parametrize("input_str, expected", [
     ("", _NOW),
@@ -108,8 +107,6 @@ def test_deserialize_invalid_pi_time(invalid_input):
     ("23:59:59.999", _TODAY + timedelta(hours=23, minutes=59, seconds=59, milliseconds=999)),
 ])
 def test_deserialize_timestamp(input_str, expected):
-    print(f"Testing input: {input_str}, expected: {expected}")
-    print(f"Deserialized: {pi_time.deserialize_timestamp(input_str)}")
     assert abs(pi_time.deserialize_timestamp(input_str) - expected) < timedelta(seconds=1)
 
 @pytest.mark.parametrize("invalid_input", [
@@ -126,7 +123,7 @@ def test_deserialize_timestamp(input_str, expected):
 ])
 def test_deserialize_invalid_timestamp(invalid_input):
     with pytest.raises(ValueError):
-        print(f"Testing invalid input: {invalid_input}", pi_time.deserialize_timestamp(invalid_input))
+        pi_time.deserialize_timestamp(invalid_input)
 
 
 @pytest.mark.parametrize("input_str, expected", [

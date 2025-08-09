@@ -99,9 +99,7 @@ class SampleType(Enum):
         return value in cls._value2member_map_
 
 class PiDataSourceConfig:
-    """Configuration class for the Pi data source."""
-
-    def __init__(self, options: dict):
+    def __init__(self, options: dict) -> None:
         self.host = _parse_str(options, "host", required=True).rstrip('/')
         self.auth_method = _parse_enum(options, "authMethod", AuthMethod, required=True, default="anonymous")
         self.username = _parse_str(options, "username", required=self.auth_method == AuthMethod.BASIC)
@@ -109,7 +107,12 @@ class PiDataSourceConfig:
         self.token = _parse_str(options, "token", required=self.auth_method == AuthMethod.BEARER)
         self.verify = _parse_bool(options, "verify", required=True, default=True)
         self.server = _parse_str(options, "server", required=True)
-        self.point_names = _parse_points(options)
+        self.rate_limit_duration = timedelta(seconds=_parse_positive_int(options, "rateLimitDuration", default=1)) # In the actual Pi server config, this is specified as a number of seconds, not an AFTimeSpan string.
+        self.rate_limit_max_requests = _parse_positive_int(options, "rateLimitMaxRequests", default=1000)
+        self.max_returned_items_per_call = _parse_positive_int(options, "maxReturnedItemsPerCall", default=150000)
+
+class PiDataSourceRequestParams:
+    def __init__(self, options: dict) -> None:
         self.request_type = _parse_enum(options, "requestType", RequestType, required=True)
         self.start_time = _parse_datetime(options, "startTime", required=True)
         self.end_time = _parse_datetime(options, "endTime", required=True)
@@ -128,10 +131,20 @@ class PiDataSourceConfig:
         self.summary_duration = _parse_timedelta(options, "summaryDuration", required=self.request_type == RequestType.SUMMARY)
         self.sample_type = _parse_enum(options, "sampleType", SampleType, default="expressionrecordedvalues")
         self.sample_interval = _parse_timedelta(options, "sampleInterval", required=self.request_type == RequestType.SUMMARY and self.sample_type == SampleType.INTERVAL)
-        self.rate_limit_duration = timedelta(seconds=_parse_positive_int(options, "rateLimitDuration", default=1)) # In the actual Pi server config, this is specified as a number of seconds, not an AFTimeSpan string.
-        self.rate_limit_max_requests = _parse_positive_int(options, "rateLimitMaxRequests", default=1000)
-        self.max_returned_items_per_call = _parse_positive_int(options, "maxReturnedItemsPerCall", default=150000)
-        self.auth = None
+
+# TODO: This could be more robust
+def parse_paths(options: dict[str, str]) -> list[str]:
+    """
+    Parses a string formatted like: ["thing1","thing2","thing3"]
+    """
+    if "path" in options:
+        path = options["path"]
+        return [path]
+    elif "paths" in options:
+        paths = options["paths"].strip("[]").replace('"', '').split(",")
+        return paths
+    else:
+        raise errors.PiDataSourceConfigError("A list of point names must be provided using the load() method on the reader.")
 
 def _parse_str(options: dict, key: str, required: bool = False, default: str = None) -> str:
     val = options.get(key, default)
@@ -210,16 +223,3 @@ def _parse_timezone(options: dict, key: str, required: bool = False, default: st
         return ZoneInfo(val)
     except ZoneInfoNotFoundError:
         raise errors.PiDataSourceConfigError(f"Invalid timezone specified for {key}: {val}")
-
-def _parse_points(options: dict[str, str]) -> list[str]:
-    """
-    Parses a string formatted like: ["thing1","thing2","thing3"]
-    """
-    if "path" in options:
-        point = options["path"]
-        return [point]
-    elif "paths" in options:
-        points = options["paths"].strip("[]").replace('"', '').split(",")
-        return points
-    else:
-        raise errors.PiDataSourceConfigError("A list of points must be provided using the load() method on the reader.")
