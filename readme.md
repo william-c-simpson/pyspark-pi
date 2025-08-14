@@ -20,8 +20,7 @@ connection_info = {
     "host": "https://example.com",
     "authMethod": "basic",
     "username": "username",
-    "password": "password",
-    "server": "name_of_data_archive_server"
+    "password": "password"
 }
 
 df = spark.read.format("pi").options(
@@ -46,7 +45,7 @@ df = spark.read.format("pi").options(
 .load([r"\\servername\a.pi.point.name", r"\\servername\another.pi.point.name"])
 ```
 
-Either a single path or a list of multiple paths can be provided to load. 
+Either a single path or a list of multiple paths can be provided to load.
 
 All points in a single read call must be of the same PointType.
 
@@ -128,7 +127,7 @@ schema = result_schema(StringType())
 
 The Pi Web API has a per-user rate limit which is configurable using the configuration properties `RateLimitDuration`, `RateLimitMaxRequests`, and `MaxReturnedValuesPerCall`. There are also separate limits for search requests, but these shouldn't ever be hit by this connector.
 
-There are three options which correspond to these configuration properties. They have the same defaults as the web API, but if these values have been changed on your API instance, you'll need to adjust them here too. 
+There are three options which correspond to these configuration properties. They have the same defaults as the web API, but if these values have been changed on your API instance, you'll need to adjust them here too.
 
 It schedules when requests will be sent out before dispatching tasks so that you can request any abitrary amount of data with a single read call and you shouldn't hit the rate limit, as long as the options you set match how your web API instance is configured. Even still, it isn't completely inconceivable that network delays, slow downs of the python processes, discrepancies between computer clocks on the executors, etc. might cause more than one request to land within `RateLimitDuration`, causing you to hit the rate limit. If this happens, I recommend adjusting the options to make the connector think that the rate limit is less permissive than it actually is. As a start, I recommend halving `RateLimitMaxRequests` to `500` so that two requests can be sent simultaneously without triggering the rate limit.
 
@@ -142,12 +141,12 @@ Those regexs don't cover all edge cases perfectly. If you find yourself passing 
 
 # Relevant Aveva Documentation
 
-https://docs.aveva.com/bundle/pi-web-api/page/1023024.html  
-https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getrecorded.html  
-https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getinterpolated.html  
-https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getsummary.html  
-https://docs.aveva.com/bundle/pi-web-api/page/1023116.html  
-https://docs.aveva.com/bundle/pi-web-api-reference/page/help/topics/time-strings.html  
+https://docs.aveva.com/bundle/pi-web-api/page/1023024.html
+https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getrecorded.html
+https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getinterpolated.html
+https://docs.aveva.com/bundle/pi-web-api-reference/page/help/controllers/stream/actions/getsummary.html
+https://docs.aveva.com/bundle/pi-web-api/page/1023116.html
+https://docs.aveva.com/bundle/pi-web-api-reference/page/help/topics/time-strings.html
 https://docs.aveva.com/bundle/af-sdk/page/html/T_OSIsoft_AF_Time_AFTimeSpan.htm
 
 # To-Do:
