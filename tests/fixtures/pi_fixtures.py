@@ -34,9 +34,10 @@ def connection_info() -> dict[str, str]:
         (float, pi.PointType.FLOAT32, "PI_WEB_API_FLOAT_POINT_NAME"),
         (str, pi.PointType.STRING, "PI_WEB_API_STRING_POINT_NAME"),
         (datetime, pi.PointType.TIMESTAMP, "PI_WEB_API_TIMESTAMP_POINT_NAME"),
-        (str, pi.PointType.DIGITAL, "PI_WEB_API_DIGITAL_POINT_NAME")
+        (str, pi.PointType.DIGITAL, "PI_WEB_API_DIGITAL_POINT_NAME"),
+        (bytes, pi.PointType.BLOB, "PI_WEB_API_BLOB_POINT_NAME") 
     ],
-    ids=["int", "float", "string", "timestamp", "digital"]
+    ids=["int", "float", "string", "timestamp", "digital", "blob"]
 )
 def test_data(request, connection_info) -> tuple[type, str, list[dict[str, Any]]]:
     data_type, point_type, env_var = request.param
@@ -100,7 +101,6 @@ def _delete_point_data(point_id: str, data: list[dict[str, Any]], host: str, use
     response.raise_for_status()
 
 def _generate_data(point_type: pi.PointType) -> list[dict[str, Any]]:
-    now = datetime.now(timezone.utc)
     timestamps = [(datetime(2025, 1, 1) + timedelta(minutes=i)).isoformat() for i in range(10)]
 
     if point_type == pi.PointType.INT32:
@@ -113,4 +113,6 @@ def _generate_data(point_type: pi.PointType) -> list[dict[str, Any]]:
         return [{"Timestamp": ts, "Value": ts} for ts in timestamps]
     elif point_type == pi.PointType.DIGITAL:
         return [{"Timestamp": ts, "Value": random.choice(["YES", "NO"])} for ts in timestamps]
+    elif point_type == pi.PointType.BLOB:
+        return [{"Timestamp": ts, "Value": [random.randint(0, 255) for _ in range(8)]} for ts in timestamps]
     raise ValueError(f"Unsupported point_type: {point_type}")

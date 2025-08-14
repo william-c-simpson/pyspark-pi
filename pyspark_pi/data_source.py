@@ -1,18 +1,21 @@
 from pyspark.sql.datasource import DataSource
 from pyspark.sql.types import StructType
 
-from pyspark_pi import parse_options, pi, errors, auth, reader, context, helpers
+from pyspark_pi import ds_options, pi, errors, reader, context, helpers
 
 class PiDataSource(DataSource):
     """
     A Spark data source for the Pi Web API.
     """
-    def __init__(self, options: dict) -> None:
-        self.context = context.PiDataSourceContext()
-        self.context.config = parse_options.PiDataSourceConfig(options)
-        self.context.params = parse_options.PiDataSourceRequestParams(options)
-        self.context.paths = parse_options.parse_paths(options)
-        self.context.auth = auth.create_auth(self.context.config)
+    ctx: context.PiDataSourceContext
+    schema_inferred: bool
+
+    def __init__(self, options: dict[str, str]) -> None:
+        self.ctx = context.PiDataSourceContext(
+            config=ds_options.PiDataSourceConfig(options),
+            params=ds_options.PiDataSourceRequestParams(options),
+            paths=ds_options.parse_paths(options)
+        )
         self.schema_inferred = False
 
     @classmethod
@@ -20,12 +23,12 @@ class PiDataSource(DataSource):
         return "pi"
 
     def schema(self) -> StructType:
-        self.context.points, self.context.point_type = pi.request_point_metadata(self.context)
-        self.context.points = pi.estimate_point_frequencies(self.context)
+        self.ctx.points, self.ctx.point_type = pi.request_point_metadata(self.ctx)
+        self.ctx.points = pi.estimate_point_frequencies(self.ctx)
 
         self.schema_inferred = True
-        
-        return helpers.result_schema(self.context.points[0].type.pyspark_type())
+
+        return helpers.result_schema(self.ctx.points[0].type.pyspark_type())
 
     def reader(self, schema: StructType) -> reader.PiDataSourceReader:
         """
@@ -38,7 +41,7 @@ class PiDataSource(DataSource):
         an error to be raised if the provided schema does not match that derived from Pi.
         """
         if self.schema_inferred:
-            return reader.PiDataSourceReader(self.context)
+            return reader.PiDataSourceReader(self.ctx)
 
         inferred_schema = self.schema()
         if [field.name for field in schema.fields] != [field.name for field in inferred_schema.fields]:
@@ -46,4 +49,4 @@ class PiDataSource(DataSource):
         if schema["value"].dataType != inferred_schema["value"].dataType:
             raise errors.PiDataSourceSchemaError(f"Schema mismatch: The 'value' field should be of type {inferred_schema['value'].dataType.simpleString()}. This was derived from the PointTypes of the points provided. The provided schema has it as {schema['value'].dataType.simpleString()}.")
 
-        return reader.PiDataSourceReader(self.context)
+        return reader.PiDataSourceReader(self.ctx)

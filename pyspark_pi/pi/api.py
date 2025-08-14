@@ -1,22 +1,22 @@
 from datetime import timedelta, datetime
 import time
-from enum import Enum
-from typing import Any
+from typing import Any, TypeAlias
 
 import requests
-from pyspark.sql.types import DataType, StringType, IntegerType, FloatType, BinaryType, TimestampType
 
-from pyspark_pi import errors, parse_options, pi_time, context
+from pyspark_pi import errors, ds_options, context
+from .point import Point, PointType
+from .time import serialize_pi_interval
+
+RETURNED_TUPLE_TYPE: TypeAlias = tuple[str, datetime, int | float | str | datetime | bytes | None, str | None, bool, bool, bool, bool]
 
 _SHORT_TIMEOUT = 60
 _LONG_TIMEOUT = 60 * 5
 
-class Point:
-    def __init__(self, name: str, web_id: str = None, freq: timedelta = None, type: 'PointType' = None):
-        self.name = name
-        self.web_id = web_id
-        self.freq = freq
-        self.type = type
+_POINT_METADATA_SELECTED_FIELDS = "Items.Object.Name;Items.Object.WebId;Items.Object.PointType;Items.Exception.Errors"
+_RECORDED_VALUES_SELECTED_FIELDS = "Items"
+_INTERPOLATED_VALUES_SELECTED_FIELDS = _RECORDED_VALUES_SELECTED_FIELDS
+_SUMMARY_VALUES_SELECTED_FIELDS = "Items.Value"
 
 class RequestRange:
     def __init__(self, point: Point, start_time: datetime, end_time: datetime):
@@ -24,83 +24,48 @@ class RequestRange:
         self.start_time = start_time
         self.end_time = end_time
 
-class PointType(Enum):
-    INT16 = "Int16"
-    INT32 = "Int32"
-    FLOAT16 = "Float16"
-    FLOAT32 = "Float32"
-    FLOAT64 = "Float64"
-    STRING = "String"
-    DIGITAL = "Digital"
-    BLOB = "Blob"
-    TIMESTAMP = "Timestamp"
-
-    @classmethod
-    def has_value(cls, value: str) -> bool:
-        return value in cls._value2member_map_
-    
-    def pyspark_type(self) -> DataType:
-        if self == PointType.INT16 or self == PointType.INT32:
-            return IntegerType()
-        elif self == PointType.FLOAT16 or self == PointType.FLOAT32 or self == PointType.FLOAT64:
-            return FloatType()
-        elif self == PointType.STRING:
-            return StringType()
-        elif self == PointType.DIGITAL:
-            return StringType()
-        elif self == PointType.BLOB:
-            return BinaryType()
-        elif self == PointType.TIMESTAMP:
-            return TimestampType()
-
+# TODO: There's a limit on the length of a URL which could get hit here
 def request_point_metadata(
     ctx: context.PiDataSourceContext
-) -> tuple[PointType, list[Point]]:
-    url = f"{ctx.config.host}/piwebapi/batch"
-    headers = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
-    payload = {
-        "server": {
-            "Method": "GET",
-            "Resource": f"{ctx.config.host}/piwebapi/dataservers?name={ctx.config.server}&selectedFields=WebId"
-        },
-        "tags": {
-            "Method": "GET",
-            "Resource": f"{ctx.config.host}/piwebapi/points/search?dataServerWebId={{0}}&query={' OR '.join([f'tag:=%22{tag}%22' for tag in ctx.paths])}&selectedFields=Items.Name;Items.WebId;Items.PointType",
-            "ParentIds": ["server"],
-            "Parameters": ["$.server.Content.WebId"]
-        }
-    }
-    res = requests.post(
+) -> tuple[list[Point], PointType]:
+    url = f"{ctx.config.host}/piwebapi/points/multiple?path={'&path='.join([str(path) for path in ctx.paths])}&selectedFields={_POINT_METADATA_SELECTED_FIELDS}"
+    res = requests.get(
         url,
-        json=payload,
         auth=ctx.auth,
         verify=ctx.config.verify,
-        headers=headers,
         timeout=_SHORT_TIMEOUT
     )
-    try:
-        res.raise_for_status()
-    except requests.HTTPError as e:
-        raise errors.PiDataSourceHttpError(f"Failed to retrieve metadata: {e}") from e
-    
-    res_body = res.json()
-    for value in res_body.values():
-        if value.get("Status") < 200 or value.get("Status") >= 300:
-            raise errors.PiDataSourceHttpError(f"Failed to retrieve metadata: {value.get('Content').get('Errors')[0]}")
-        
-    point_metadata = res_body.get("tags", {}).get("Content", {}).get("Items", [])
 
-    points = []
-    for item in point_metadata:
+    if res.status_code < 200 or res.status_code >= 300:
+        message = res.json().get("Message", res.text)
+        raise errors.PiDataSourceHttpError("Failed to retrieve point metadata", message, res.status_code)
+
+    res_body = res.json()
+    returned_items = res_body.get("Items", [])
+
+    if any("Exception" in item for item in returned_items):
+        error_messages = "\n".join(
+            item["Exception"]["Errors"][0] for item in returned_items if "Exception" in item
+        )
+        raise errors.PiDataSourceConfigError("Errors were returned when trying to retrieve point metadata:\n" + error_messages)
+
+    points: list[Point] = []
+    for item in returned_items:
+        obj = item.get("Object")
+        if obj is None:
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API when retrieving point metadata: 'Object' field is missing")
+        if not all(key in obj for key in ("Name", "WebId", "PointType")):
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API when retrieving point metadata: 'Name', 'WebId', or 'PointType' is missing in 'Object'")
+
         point = Point(
-            name=item["Name"],
-            web_id=item["WebId"],
-            type=PointType(item["PointType"])
+            name=obj.get("Name"),
+            web_id=obj.get("WebId"),
+            type=PointType(obj.get("PointType"))
         )
         points.append(point)
-    
+
     if len(set(p.type.pyspark_type() for p in points)) > 1:
-        raise errors.PiDataSourceConfigError("All tags in a given query must be of the same PointType.")
+        raise errors.PiDataSourceConfigError("All tags in a given query must be of the same PointType")
 
     return points, points[0].type
 
@@ -115,7 +80,10 @@ def estimate_point_frequencies(
     It's better to overestimate the frequency than underestimate it, and a frequency of 24 hours
     for points which are actually slower won't undersize input partitions too much.
     """
-    if ctx.params.request_type != parse_options.RequestType.RECORDED:
+    if ctx.points is None or ctx.point_type is None:
+        raise errors.PiDataSourceInternalError("Point metadata must be requested before estimating point frequencies")
+
+    if ctx.params.request_type != ds_options.RequestType.RECORDED:
         for point in ctx.points:
             point.freq = ctx.params.interval
         return ctx.points
@@ -123,7 +91,7 @@ def estimate_point_frequencies(
     batches = [ctx.points[i:i + ctx.config.rate_limit_max_requests] for i in range(0, len(ctx.points), ctx.config.rate_limit_max_requests)]
     for batch in batches:
         url = f"{ctx.config.host}/piwebapi/batch"
-        payload = {}
+        payload: dict[str, dict[str, str]] = {}
         for point in batch:
             payload[point.name] = {
                 "Method": "GET",
@@ -133,7 +101,7 @@ def estimate_point_frequencies(
                     "&calculationBasis=EventWeighted"
                     "&startTime=*-24h"
                     "&endTime=*"
-                    "&selectedFields=Items.Value"
+                    f"&selectedFields={_SUMMARY_VALUES_SELECTED_FIELDS}"
                 )
             }
         headers = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
@@ -148,14 +116,14 @@ def estimate_point_frequencies(
         _raise_batch_http_errors(res)
 
         res_body = res.json()
-        results = _parse_batch_summary_results(IntegerType(), res_body)
+        results = _parse_batch_summary_results(PointType.INT32, res_body)
         names_counts_map = {name: count for name, _, count, _, _, _, _, _ in results}
         for point in ctx.points:
             count = names_counts_map.get(point.name)
             if count is None or count == 0:
                 point.freq = timedelta(days=1)
             else:
-                point.freq = timedelta(hours=24 / count)
+                point.freq = timedelta(hours=(24 / count))
 
         time.sleep(ctx.config.rate_limit_duration.total_seconds())
 
@@ -164,10 +132,13 @@ def estimate_point_frequencies(
 def request_recorded_values(
     ctx: context.PiDataSourceContext,
     request_ranges: list[RequestRange]
-) -> list[tuple[str, str, any]]:
+) -> list[RETURNED_TUPLE_TYPE]:
+    if ctx.point_type is None:
+        raise errors.PiDataSourceInternalError("PointType must be known before requesting recorded values")
+    
     url = f"{ctx.config.host}/piwebapi/batch"
     headers = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
-    payload = {}
+    payload: dict[str, Any] = {}
 
     for request_range in request_ranges:
         resource = (
@@ -175,6 +146,7 @@ def request_recorded_values(
             f"?startTime={request_range.start_time.isoformat().replace('+00:00', 'Z')}"
             f"&endTime={request_range.end_time.isoformat().replace('+00:00', 'Z')}"
             f"&boundaryType={ctx.params.boundary_type.value}"
+            f"&selectedFields={_RECORDED_VALUES_SELECTED_FIELDS}"
         )
         if ctx.params.desired_units:
             resource += f"&desiredUnits={ctx.params.desired_units}"
@@ -199,17 +171,21 @@ def request_recorded_values(
 def request_interpolated_values(
     ctx: context.PiDataSourceContext,
     request_ranges: list[RequestRange]
-) -> list[tuple[str, str, any]]:
+) -> list[RETURNED_TUPLE_TYPE]:
+    if ctx.point_type is None:
+        raise errors.PiDataSourceInternalError("PointType must be known before requesting interpolated values")
+
     url = f"{ctx.config.host}/piwebapi/batch"
     headers = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
-    payload = {}
+    payload: dict[str, Any] = {}
 
     for request_range in request_ranges:
         resource = (
             f"{ctx.config.host}/piwebapi/streams/{request_range.point.web_id}/interpolated"
             f"?startTime={request_range.start_time.isoformat().replace('+00:00', 'Z')}"
             f"&endTime={request_range.end_time.isoformat().replace('+00:00', 'Z')}"
-            f"&interval={pi_time.serialize_interval(ctx.params.interval)}"
+            f"&interval={serialize_pi_interval(ctx.params.interval)}"
+            f"&selectedFields={_INTERPOLATED_VALUES_SELECTED_FIELDS}"
         )
         if ctx.params.sync_time:
             resource += f"&syncTime={ctx.params.sync_time}"
@@ -238,10 +214,15 @@ def request_interpolated_values(
 def request_summary_values(
     ctx: context.PiDataSourceContext,
     request_ranges: list[RequestRange]
-) -> list[tuple[str, str, any]]:
+) -> list[RETURNED_TUPLE_TYPE]:
+    if ctx.point_type is None:
+        raise errors.PiDataSourceInternalError("PointType must be known before requesting summary values")
+    if ctx.params.summary_duration is None:
+        raise errors.PiDataSourceInternalError("request_summary_values was called but summary_duration is not set in the request parameters")
+    
     url = f"{ctx.config.host}/piwebapi/batch"
     headers = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
-    payload = {}
+    payload: dict[str, Any] = {}
 
     for request_range in request_ranges:
         resource = (
@@ -250,7 +231,8 @@ def request_summary_values(
             f"&startTime={request_range.start_time.isoformat().replace('+00:00', 'Z')}"
             f"&endTime={request_range.end_time.isoformat().replace('+00:00', 'Z')}"
             f"&calculationBasis={ctx.params.calculation_basis.value}"
-            f"&summaryDuration={pi_time.serialize_interval(ctx.params.summary_duration)}"
+            f"&summaryDuration={serialize_pi_interval(ctx.params.summary_duration)}"
+            f"&selectedFields={_SUMMARY_VALUES_SELECTED_FIELDS}"
         )
         if ctx.params.time_type:
             resource += f"&timeType={ctx.params.time_type.value}"
@@ -274,31 +256,47 @@ def request_summary_values(
     _raise_batch_http_errors(res)
     return _parse_batch_summary_results(ctx.point_type, res.json())
 
-
 def _raise_batch_http_errors(res: requests.Response) -> None:
-    res.raise_for_status()
+    if res.status_code < 200 or res.status_code >= 300:
+        message = res.json().get("Message", res.text)
+        raise errors.PiDataSourceHttpError("Failed to retrieve data from Pi Web API batch endpoint", message, res.status_code)
     res_body = res.json()
     for value in res_body.values():
         if value.get("Status") < 200 or value.get("Status") >= 300:
-            raise errors.PiDataSourceHttpError(f"Failed to retrieve data: {value.get('Content').get('Errors')[0]}")
+            content = value.get("Content")
+            if not content:
+                raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Content' field is missing in one of the responses")
+            message = content.get("Message", str(content))
+            raise errors.PiDataSourceHttpError("Failed to retrieve data for one or more points from Pi Web API batch endpoint", message, res.status_code)
 
-def _parse_batch_results(point_type: PointType, res_body: dict) -> list[tuple[str, str, Any]]:
-    results = []
-    for key, value in res_body.items():
+def _parse_batch_results(
+        point_type: PointType, 
+        res_body: dict[str, Any]
+) -> list[RETURNED_TUPLE_TYPE]:
+    results: list[RETURNED_TUPLE_TYPE] = []
+    for key, value_obj in res_body.items():
         point_name = key.split(";")[0]
-        for item in value.get("Content", {}).get("Items", []):
-            if point_type == PointType.TIMESTAMP:
-                value = datetime.fromisoformat(item.get("Value")) if item.get("Value") else None
-            elif point_type == PointType.DIGITAL:
-                value = item.get("Value").get("Name") if item.get("Value") else None
+        content = value_obj.get("Content")
+        if not content:
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Content' field is missing in one of the responses")
+        items = content.get("Items")
+        if not items:
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Items' field is missing in the response content")
+        for item in items:
+            timestamp = datetime.fromisoformat(item.get("Timestamp"))
+            raw_value = item.get("Value")
+            if point_type == PointType.DIGITAL:
+                value = raw_value.get("Name") if raw_value else None
             elif point_type == PointType.BLOB:
-                value = bytes(item.get("Value")) if item.get("Value") else None
+                value = bytes(raw_value) if raw_value else None
+            elif point_type == PointType.TIMESTAMP:
+                value = datetime.fromisoformat(raw_value) if raw_value else None
             else:
-                value = item.get("Value")
+                value = raw_value
 
             results.append((
                 point_name,
-                datetime.fromisoformat(item["Timestamp"]),
+                timestamp,
                 value,
                 item.get("UnitsAbbreviation"),
                 bool(item.get("Good")),
@@ -308,21 +306,41 @@ def _parse_batch_results(point_type: PointType, res_body: dict) -> list[tuple[st
             ))
     return results
 
-def _parse_batch_summary_results(point_type: PointType, res_body: dict) -> list[tuple[str, str, any]]:
-    results = []
-    for key, value in res_body.items():
+def _parse_batch_summary_results(
+        point_type: PointType,
+        res_body: dict[str, Any]
+) -> list[RETURNED_TUPLE_TYPE]:
+    results: list[RETURNED_TUPLE_TYPE] = []
+    for key, value_obj in res_body.items():
         point_name = key.split(";")[0]
-        for item in [inner_value.get("Value") for inner_value in value.get("Content", {}).get("Items", [])]:
-            if point_type == PointType.TIMESTAMP:
-                value = datetime.fromisoformat(item["Timestamp"]) if item.get("Timestamp") else None
-            elif point_type == PointType.DIGITAL:
-                value = item.get("Value").get("Name") if item.get("Value") else None
+        content = value_obj.get("Content")
+        if not content:
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Content' field is missing in one of the responses")
+        items = content.get("Items")
+        if not items:
+            raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Items' field is missing in the response content")
+        for item in items:
+            inner_value_obj = item.get("Value")
+            if not inner_value_obj:
+                raise errors.PiDataSourceUnexpectedResponseError("Unexpected response from Pi Web API batch endpoint: 'Value' field is missing in one of the summary items")
+            if "Errors" in inner_value_obj:
+                error_messages = [err.get("Message", err)[0] for err in inner_value_obj.get("Errors", [])]
+                raise errors.PiDataSourceHttpError(f"Error retrieving summary value for point '{point_name}'", "\n".join(error_messages))
+
+            timestamp = datetime.fromisoformat(inner_value_obj.get("Timestamp"))
+            raw_value = inner_value_obj.get("Value")
+            if point_type == PointType.DIGITAL:
+                value = raw_value.get("Name") if raw_value else None
+            elif point_type == PointType.BLOB:
+                value = bytes(raw_value) if raw_value else None
+            elif point_type == PointType.TIMESTAMP:
+                value = datetime.fromisoformat(raw_value) if raw_value else None
             else:
-                value = item.get("Value")
+                value = raw_value
 
             results.append((
-                point_name, 
-                datetime.fromisoformat(item["Timestamp"]), 
+                point_name,
+                timestamp,
                 value,
                 item.get("UnitsAbbreviation"),
                 bool(item.get("Good")),
@@ -331,3 +349,4 @@ def _parse_batch_summary_results(point_type: PointType, res_body: dict) -> list[
                 bool(item.get("Annotated")),
             ))
     return results
+

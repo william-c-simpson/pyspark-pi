@@ -67,18 +67,18 @@ def deserialize_pi_time(value: str) -> datetime:
             left = value[:i]
             right = value[i+1:]
             try:
-                timestamp = deserialize_timestamp(left)
+                timestamp = deserialize_pi_timestamp(left)
                 if value[i] == '+':
-                    interval = deserialize_interval(right)
+                    interval = deserialize_pi_interval(right)
                 else:
-                    interval = deserialize_interval(f"-{right}")
+                    interval = deserialize_pi_interval(f"-{right}")
                 return timestamp + interval
             except Exception:
                 continue
 
-    return deserialize_timestamp(value)
+    return deserialize_pi_timestamp(value)
 
-def deserialize_timestamp(value: str) -> datetime:
+def deserialize_pi_timestamp(value: str) -> datetime:
     if value == "":
         return datetime.now()
     match = _TIMESTAMP_ABBREVIATION_RE.match(value.strip())
@@ -120,7 +120,7 @@ def deserialize_timestamp(value: str) -> datetime:
     else:
         raise ValueError(f"Invalid timestamp format: {value}")
 
-def deserialize_interval(value: str) -> timedelta:
+def deserialize_pi_interval(value: str) -> timedelta:
     value = value.strip()
 
     match = _INTERVAL_COLON_FORMAT_RE.match(value)
@@ -152,7 +152,7 @@ def deserialize_interval(value: str) -> timedelta:
 
     return timedelta(seconds=seconds)
 
-def serialize_interval(td: timedelta) -> str:
+def serialize_pi_interval(td: timedelta) -> str:
     total_seconds = td.total_seconds()
     if total_seconds < 0:
         sign = "-"

@@ -11,7 +11,7 @@ pip install pyspark-pi
 ```
 
 ```python
-from pispark_pi import PiDataSource
+from pyspark_pi import PiDataSource
 
 spark = SparkSession.builder.getOrCreate()
 spark.dataSource.register(PiDataSource)
@@ -29,16 +29,24 @@ df = spark.read.format("pi").options(
     requestType="recorded",
     startTime="1970-01-01T00:00:00Z",
     endTime="1970-01-02T00:00:00Z"
+).load(r"\\servername\a.pi.point.name")
+
+# Or:
+
+df = spark.read.format("pi").options(
+    **connection_info,
+    requestType="recorded",
+    startTime="1970-01-01T00:00:00Z",
+    endTime="1970-01-02T00:00:00Z",
+    server="servername"
 ).load("a.pi.point.name")
 
 # Or, for more than one point:
 
-points = ["a.pi.point.name", "another.pi.point.name"]
-
-.load(points)
+.load([r"\\servername\a.pi.point.name", r"\\servername\another.pi.point.name"])
 ```
 
-Either a single point name or a list of multiple point names can be provided to load. 
+Either a single path or a list of multiple paths can be provided to load. 
 
 All points in a single read call must be of the same PointType.
 
@@ -60,7 +68,7 @@ Most options line up exactly with the query parameters passed to the get recorde
 | password | The password to use when basic auth is selected. | n/a | None |
 | token | The token to use when bearer auth is selected. | n/a | None |
 | verify | Whether or not to verify SSL certificates. | true, false | true |
-| server | The name of the data archive server to use. | n/a | None |
+| server | An optional name of the data archive server to use. Will override server names provided in paths. | n/a | None |
 | requestType | The type of request to send. | recorded, interpolated, summary | None |
 | startTime | The start time of the window for which to retrieve data. | n/a | None |
 | endTime | The end time of the window for which to retrieve data. | n/a | None |

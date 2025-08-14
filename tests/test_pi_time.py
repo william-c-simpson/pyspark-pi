@@ -1,7 +1,7 @@
 import pytest
 from datetime import timedelta, datetime, timezone
 
-from pyspark_pi import pi_time
+from pyspark_pi import pi
 
 _NOW = datetime.now()
 _TODAY = _NOW.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -54,7 +54,7 @@ _YESTERDAY = _TODAY - timedelta(days=1)
     ("*-25m", _NOW - timedelta(minutes=25)),
 ])
 def test_deserialize_pi_time(input_str, expected):
-    assert abs(pi_time.deserialize_pi_time(input_str) - expected) < timedelta(seconds=1)
+    assert abs(pi.deserialize_pi_time(input_str) - expected) < timedelta(seconds=1)
 
 @pytest.mark.parametrize("invalid_input", [
     "now",
@@ -80,7 +80,7 @@ def test_deserialize_pi_time(input_str, expected):
 ])
 def test_deserialize_invalid_pi_time(invalid_input):
     with pytest.raises(ValueError):
-        pi_time.deserialize_pi_time(invalid_input)
+        pi.deserialize_pi_time(invalid_input)
 
 @pytest.mark.parametrize("input_str, expected", [
     ("", _NOW),
@@ -107,7 +107,7 @@ def test_deserialize_invalid_pi_time(invalid_input):
     ("23:59:59.999", _TODAY + timedelta(hours=23, minutes=59, seconds=59, milliseconds=999)),
 ])
 def test_deserialize_timestamp(input_str, expected):
-    assert abs(pi_time.deserialize_timestamp(input_str) - expected) < timedelta(seconds=1)
+    assert abs(pi.deserialize_pi_timestamp(input_str) - expected) < timedelta(seconds=1)
 
 @pytest.mark.parametrize("invalid_input", [
     "now",
@@ -123,7 +123,7 @@ def test_deserialize_timestamp(input_str, expected):
 ])
 def test_deserialize_invalid_timestamp(invalid_input):
     with pytest.raises(ValueError):
-        pi_time.deserialize_timestamp(invalid_input)
+        pi.deserialize_pi_timestamp(invalid_input)
 
 
 @pytest.mark.parametrize("input_str, expected", [
@@ -151,7 +151,7 @@ def test_deserialize_invalid_timestamp(invalid_input):
     ("0f", timedelta(0)),
 ])
 def test_deserialize_interval(input_str, expected):
-    assert abs(pi_time.deserialize_interval(input_str) - expected) < timedelta(milliseconds=1)
+    assert abs(pi.deserialize_pi_interval(input_str) - expected) < timedelta(milliseconds=1)
 
 @pytest.mark.parametrize("td, expected", [
     (timedelta(hours=1, minutes=2, seconds=3.456), "1h+2m+3s+456f"),
@@ -169,7 +169,7 @@ def test_deserialize_interval(input_str, expected):
     (timedelta(seconds=1.999), "1s+999f"),
 ])
 def test_serialize_interval(td, expected):
-    assert pi_time.serialize_interval(td) == expected
+    assert pi.serialize_pi_interval(td) == expected
 
 @pytest.mark.parametrize("invalid_input", [
     "1y", 
@@ -195,4 +195,4 @@ def test_serialize_interval(td, expected):
 ])
 def test_deserialize_invalid_interval(invalid_input):
     with pytest.raises(ValueError):
-        pi_time.deserialize_interval(invalid_input)
+        pi.deserialize_pi_interval(invalid_input)

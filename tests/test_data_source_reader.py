@@ -1,7 +1,7 @@
 import pytest
 from datetime import timedelta
 
-from pyspark_pi import reader, parse_options, pi, context
+from pyspark_pi import reader, ds_options, pi, context
 
 @pytest.fixture
 def point():
@@ -16,23 +16,24 @@ def points():
 
 @pytest.fixture
 def default_context():
-    ctx = context.PiDataSourceContext()
-    ctx.config = parse_options.PiDataSourceConfig({
-        "host": "https://example.com",
-        "username": "user",
-        "password": "pass",
-        "verify": "true",
-        "server": "server1",
-        "rateLimitDuration": "1",
-        "rateLimitMaxRequests": 2,
-        "maxReturnedItemsPerCall": 10,
-    })
-    ctx.params = parse_options.PiDataSourceRequestParams({
-        "requestType": "recorded",
-        "startTime": "2000-01-01T00:00:00Z",
-        "endTime": "2000-01-01T01:00:00Z"
-    })
-    ctx.paths = ["point"]
+    ctx = context.PiDataSourceContext(
+        ds_options.PiDataSourceConfig({
+            "host": "https://example.com",
+            "username": "user",
+            "password": "pass",
+            "verify": "true",
+            "server": "server1",
+            "rateLimitDuration": "1",
+            "rateLimitMaxRequests": 2,
+            "maxReturnedItemsPerCall": 10,
+        }),
+        ds_options.PiDataSourceRequestParams({
+            "requestType": "recorded",
+            "startTime": "2000-01-01T00:00:00Z",
+            "endTime": "2000-01-01T01:00:00Z"
+        }),
+        ["point"]
+    )
     return ctx
 
 def test_single_point_partitioning(point, default_context):

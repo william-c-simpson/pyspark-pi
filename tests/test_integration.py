@@ -29,23 +29,25 @@ def test_get_recorded(
     assert df.count() == len(data)
     assert {row["point"] for row in rows} == {point_name}
 
-    expected_timstamps = [datetime.fromisoformat(row["Timestamp"]).replace(tzinfo=timezone.utc) for row in data]
+    expected_timestamps = [datetime.fromisoformat(row["Timestamp"]).replace(tzinfo=timezone.utc) for row in data]
     # Even if you set spark.sql.session.timeZone to UTC, collect() actually returns timestamps in the local timezone anyway with no tzinfo.
     actual_timestamps = [row["timestamp"].replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(timezone.utc) for row in rows]
-    assert actual_timestamps == expected_timstamps
+    assert actual_timestamps == expected_timestamps
 
     if data_type is int:
-        assert {row["value"] for row in rows} == {d["Value"] for d in data}
+        assert [row["value"] for row in rows] == [d["Value"] for d in data]
     elif data_type is float:
         assert all( abs(row["value"] - d["Value"]) < 0.0001 for row, d in zip(rows, data) )
     elif data_type is str:
-        assert {row["value"] for row in rows} == {d["Value"] for d in data}
+        assert [row["value"] for row in rows] == [d["Value"] for d in data]
     elif data_type is datetime:
         # Same tz situation as above
         assert all(
             row["value"].replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(timezone.utc) == datetime.fromisoformat(d["Value"]).replace(tzinfo=timezone.utc)
             for row, d in zip(rows, data)
         )
+    elif data_type is bytes:
+        assert [row["value"] for row in rows] == [bytes(d["Value"]) for d in data]
 
 @pytest.mark.integration
 def test_get_interpolated(
